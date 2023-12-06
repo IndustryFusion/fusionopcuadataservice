@@ -1,3 +1,6 @@
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FIndustryFusion%2Ffusionopcuadataservice.svg?type=shield&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2FIndustryFusion%2Ffusionopcuadataservice?ref=badge_shield&issueType=license)
+
+
 # Fusion OPC-UA Data Service
 
 This Python script facilitates the integration between an OPC-UA server and the PDT Gateway services by performing the following tasks:
