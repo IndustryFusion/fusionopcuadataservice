@@ -49,7 +49,7 @@ print('env name: ' + opcua_discovery_url)
 # TCP socket config for OISP
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# OPCUA client instance creation
+# OPC-UA client instance creation
 try:
     client = Client(opcua_discovery_url)
     print("Connected to OPC UA server")
@@ -78,7 +78,7 @@ for i in client.find_servers():
     print(str(i.ApplicationName.Text))
     print(str(i.ApplicationUri))
 
-# Opening JSON config file for OPCUA - machine specific config from mouted path in runtime
+# Opening JSON config file for OPCUA - machine specific config from mounted path in runtime
 f = open("../resources/config.json")
 target_configs = json.load(f)
 f.close()
@@ -109,7 +109,7 @@ def fetchOpcData(n, i):
     return var.get_value()
 
 
-# Mehtod to sent the value of the OPC-UA node to PDT with its property
+# Method to send the value of the OPC-UA node to PDT with its property
 def sendOispData(n, v):
     try:
         msgFromClient = '{"n": "' + n + '", "v": "' + str(v) + '"}'
