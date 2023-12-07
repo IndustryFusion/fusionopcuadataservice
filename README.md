@@ -152,4 +152,4 @@ From the root project folder.
 
 `docker build -t <image name> .`
 
-`docker run -d -e OISP_API_ROOT="https://<PDT URL>/oisp/v1/api" -e USERNAME=<Username from PDT Keycloak> -e PASSWORD=<Passowrd from PDT Keycloak> -e OISP_DEVICE_ID=<Device ID of the asset in PDT - Scorpio API to which the data must be sent> -e OPCUA_DISCOVERY_URL=<OPC-UA Server URL> -e OISP_URL=<URL of the OISP Agent> -e OISP_PORT=<7070> -e OPC_USERNAME=<Usenrame of OPC-UA server, if any> -e OPC_PASSWORD=<Password of OPC-UA server, if any> -v <config file path>:resources/config.json`
+`docker run -d -e OISP_API_ROOT="https://<PDT URL>/oisp/v1/api" -e USERNAME=<Username from PDT Keycloak> -e PASSWORD=<Passowrd from PDT Keycloak> -e OISP_DEVICE_ID=<Device ID of the asset in PDT - Scorpio API to which the data must be sent> -e OPCUA_DISCOVERY_URL=<OPC-UA Server URL> -e OISP_URL=<URL of the OISP Agent> -e OISP_PORT=7070 -e OPC_USERNAME=<Usenrame of OPC-UA server, if any> -e OPC_PASSWORD=<Password of OPC-UA server, if any> -v <config file path>:resources/config.json`
