@@ -3,7 +3,7 @@
 
 # Fusion OPC-UA Data Service
 
-This Python script facilitates the integration between an OPC-UA server and the PDT Gateway services by performing the following tasks:
+This Python script facilitates the integration between an OPC-UA server and the PDT Gateway services by performing the following tasks.
 
 1. Establishing a connection with the OPC-UA server.
 2. Connecting to the PDT Gateway platform.
