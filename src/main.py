@@ -22,10 +22,6 @@ import time
 import oisp
 
 # Fetching all environment variables
-OISP_API_ROOT = os.environ.get('OISP_API_ROOT')
-USERNAME = os.environ.get('USERNAME')
-PASSWORD = os.environ.get('PASSWORD')
-device_id = os.environ.get('OISP_DEVICE_ID')
 
 for key, value in os.environ.items():
     if key.startswith('OPCUA_DISCOVERY_URL'):
@@ -35,10 +31,6 @@ oisp_url = os.environ.get('OISP_URL')
 oisp_port = os.environ.get('OISP_PORT')
 opc_username = os.environ.get('OPC_USERNAME')
 opc_password = os.environ.get('OPC_PASSWORD')
-
-# PDT TCP client instance creation with username and password
-oisp_client = oisp.Client(api_root=OISP_API_ROOT)
-oisp_client.auth(USERNAME, PASSWORD)
 
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
@@ -83,17 +75,6 @@ f = open("../resources/config.json")
 target_configs = json.load(f)
 f.close()
 
-# Method to register the propertires in OPC-UA config with PDT
-def registerComponent(n, t):
-    try:
-        msgFromClient = '{"n": "' + n + '", "t": "' + t + '"}'
-        print(msgFromClient)
-        s.send(str.encode(msgFromClient))
-        print("Registered component to OISP: " + n + " " + t)
-    except Exception as e:
-        print(e)
-        print("Could not register component to OISP")
-
 
 # Method to fetch the OPC-UA Node value with given namespace and identifier
 def fetchOpcData(n, i):
@@ -123,26 +104,6 @@ def sendOispData(n, v):
 
 if __name__ == "__main__":
     time.sleep(20)
-
-    # Get PDT Device GW account and delete the previously registered varibales to ignore errors in the new registration
-    accounts = oisp_client.get_accounts()
-    account = accounts[0]
-    devices = account.get_devices()
-    for j in range(len(devices)):
-        if str(device_id) == str(devices[j].device_id):
-            device = devices[j]
-            print(device.components)
-            for components in device.components:
-                print("Deleting component: " + components['cid'])
-                time.sleep(2)
-                device.delete_component(components['cid'])
-
-    # Method call for registering the device properties        
-    for item in target_configs['fusionopcuadataservice']['specification']:
-        oisp_n = "Property/http://www.industry-fusion.org/fields#" + item['parameter']
-        oisp_t = "property.v1.0"
-        registerComponent(oisp_n, oisp_t)
-        time.sleep(10)
 
     # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
     # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
