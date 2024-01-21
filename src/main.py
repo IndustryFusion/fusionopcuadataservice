@@ -93,7 +93,7 @@ def fetchOpcData(n, i):
 # Method to send the value of the OPC-UA node to PDT with its property
 def sendOispData(n, v):
     try:
-        msgFromClient = '{"n": "' + n + '", "v": "' + str(v) + '"}'
+        msgFromClient = '{"n": "' + n + '", "v": "' + str(v) + '", "t": "Property"}'
         s.send(str.encode(msgFromClient))
         print("Sent data to OISP: " + n + " " + str(v))
         print(msgFromClient)
