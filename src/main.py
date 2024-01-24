@@ -112,7 +112,7 @@ if __name__ == "__main__":
             time.sleep(0.5)
             opc_n = item['node_id']
             opc_i = item['identifier']
-            oisp_n = "Property/http://www.industry-fusion.org/fields#" + item['parameter']
+            oisp_n = "http://www.industry-fusion.org/fields#" + item['parameter']
             opc_value = fetchOpcData(n=opc_n, i=opc_i)
             check = str(oisp_n).split("-")
             if "state" in check and opc_value != "0.0":
