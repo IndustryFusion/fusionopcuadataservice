@@ -27,8 +27,8 @@ for key, value in os.environ.items():
     if key.startswith('OPCUA_DISCOVERY_URL'):
         opcua_discovery_url = os.environ.get(key)
 
-oisp_url = os.environ.get('OISP_URL')
-oisp_port = os.environ.get('OISP_PORT')
+oisp_url = os.environ.get('IFF_AGENT_URL')
+oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('OPC_USERNAME')
 opc_password = os.environ.get('OPC_PASSWORD')
 

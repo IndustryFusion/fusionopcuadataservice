@@ -15,13 +15,15 @@ This Python script facilitates the integration between an OPC-UA server and the 
 1. Python 3.8.10 or more.
 2. Process Digital Twin is already setup either locally or in cloud. [https://github.com/IndustryFusion/DigitalTwin/blob/main/helm/README.md#building-and-installation-of-platform-locally]
 3. Working OPC-UA server.
-4. The OISP agent must be started in the same system using Docker Container. Use the following command to start the OISP agent in local for development usage.
+4. The IFF IoT agent must be started in the same system using Docker Container. Use the following command to start the IFF IoT agent in local for development usage.
 
-`docker run -d -e OISP_DEVICE_ID=<Device ID of the asset in PDT> -e OISP_DEVICE_NAME=<Device ID of the asset in PDT> -e OISP_GATEWAY_ID=<Device ID of the asset in PDT> -e OISP_DEVICE_ACTIVATION_CODE=<Activation code from the OISP account> -v /volume/config:/volume/config --security-opt=privileged=true --cap-drop=all -p 41234:41234 -p 7070:7070 <OISP agent docker image>`
+IFF IoT agent docker image must be built from here - [https://github.com/IndustryFusion/DigitalTwin/tree/main/NgsildAgent/Dockerfile]
 
-OISP agent docker image must be built from here - [https://github.com/Open-IoT-Service-Platform/oisp-iot-agent/blob/development/Dockerfile]
+`docker run -d -e DEVICE_ID=<Device ID of the asset in PDT> GATEWAY_ID=<Device ID of the asset in PDT> -e KEYCLOAK_URL=<PDT Keycloak URL> -e REALM_ID=iff -e REALM_USER_PASSWORD=<Password of Keycloak REALM_USER> -v /volume/config:/volume/config --security-opt=privileged=true --cap-drop=all -p 41234:41234 -p 7070:7070 <IFF IoT agent docker image>`
 
-To get the activation code, reach to the https://< PDT endpoint URL >/ui. Then, sign in with the relevant admin  credentials created in Keycloak i.e, https://< PDT endpoint URL >/auth, and then check account details page.
+To get the REALM_USER_PASSWORD, run the following command on the PDT cluster.
+
+`kubectl -n iff get secret/credential-iff-realm-user-iff -o jsonpath='{.data.password}'| base64 -d | xargs echo`
 
 The above docker container also expects a config file with the name config.json located in the /volume/config folder of the host system for mounting. The contents of this file are as follows.
 
@@ -29,31 +31,21 @@ The above docker container also expects a config file with the name config.json 
  {
         "data_directory": "./data",
         "listeners": {
-                "rest_port": 8000,
                 "udp_port": 41234,
                 "tcp_port": 7070
-        },
-        "receivers": {
-                "udp_port": 41235,
-                "udp_address": "127.0.0.1"
         },
         "logger": {
                 "level": "info",
                 "path": "/tmp/",
                 "max_size": 134217728
         },
+        "dbManager": {
+                "file": "metrics.db",
+                "retentionInSeconds": 3600,
+                "housekeepingIntervalInSeconds": 60,
+                "enabled": false
+        },
         "connector": {
-                "rest": {
-                        "host": "PDT URL",
-                        "port": 443,
-                        "protocol": "https",
-                        "strictSSL": false,
-                        "timeout": 30000,
-                        "proxy": {
-                                "host": false,
-                                "port": false
-                        }
-                },
                 "mqtt": {
                         "host": "PDT URL",
                         "port": 8883,
@@ -70,7 +62,7 @@ The above docker container also expects a config file with the name config.json 
     }
 ```
 
-Update the "host" variable with the correct PDT URL. Also, if the PDT is running locally in the network, and the REST based connector is desired, update the REST port to 80 and protocol to 'http'.
+Update the "host" variable with the correct PDT URL.
 
 
 ## Local Setup
@@ -91,28 +83,17 @@ From the root directory of this project run the below commands to install and ac
 
 **Run the project (export environment varibales first as shown below)**
 
-`export OISP_API_ROOT="https://<PDT URL>/oisp/v1/api"`
-
-`export USERNAME=<Username from PDT Keycloak>`
-
-`export PASSWORD=<Passowrd from PDT Keycloak>`
-
-`export OISP_DEVICE_ID=<Device ID of the asset in PDT - Scorpio API to which the data must be sent>`
-
-Example: "urn:ngsi-ld:assetv5:2:46"
-
-
 `export OPCUA_DISCOVERY_URL=<OPC-UA Server URL>`
 
 Example: "opc.tcp://192.168.49.171:4840"
 
 
-`export OISP_URL=<URL of the OISP Agent>`
+`export IFF_AGENT_URL=<URL of the IFF IoT Agent>`
 
 Example: "127.0.0.1", if the agent is started in local as mentioned in the prerequisites. Or a valid DNS or IP from the cloud.
 
 
-`export OISP_PORT="7070"`
+`export IFF_AGENT_PORT="7070"`
 
 `export OPC_USERNAME=<Usenrame of OPC-UA server, if any>`
 
@@ -127,7 +108,7 @@ Also, the fusion OPC-UA service expects a config file with the name config.json 
             {
             "node_id": "ns=2",
             "identifier": "s=1:MergedRootGroupNode/MsncCoreRootNode/ActualStateOfCuttingMachine/ActualState?msnc.aSpd",
-            "parameter": "plasma-cutter-v0.1-plasma-cutter-runtime-cutter-head-speed"
+            "parameter": "cutter-head-speed"
             },
             {
             "node_id": "some namespace",
@@ -152,4 +133,4 @@ From the root project folder.
 
 `docker build -t <image name> .`
 
-`docker run -d -e OISP_API_ROOT="https://<PDT URL>/oisp/v1/api" -e USERNAME=<Username from PDT Keycloak> -e PASSWORD=<Passowrd from PDT Keycloak> -e OISP_DEVICE_ID=<Device ID of the asset in PDT - Scorpio API to which the data must be sent> -e OPCUA_DISCOVERY_URL=<OPC-UA Server URL> -e OISP_URL=<URL of the OISP Agent> -e OISP_PORT=7070 -e OPC_USERNAME=<Usenrame of OPC-UA server, if any> -e OPC_PASSWORD=<Password of OPC-UA server, if any> -v <config file path>:resources/config.json`
+`docker run -d -e OPCUA_DISCOVERY_URL=<OPC-UA Server URL> -e IFF_AGENT_URL=<URL of the IFF IoT Agent> -e IFF_AGENT_PORT=7070 -e OPC_USERNAME=<Usenrame of OPC-UA server, if any> -e OPC_PASSWORD=<Password of OPC-UA server, if any> -v <config file path>:resources/config.json <image name>`
