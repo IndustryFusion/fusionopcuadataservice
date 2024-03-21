@@ -19,8 +19,7 @@ from opcua import Client
 import os
 import socket
 import time
-import oisp
-
+import yaml
 # Fetching all environment variables
 
 for key, value in os.environ.items():
@@ -71,8 +70,8 @@ for i in client.find_servers():
     print(str(i.ApplicationUri))
 
 # Opening JSON config file for OPCUA - machine specific config from mounted path in runtime
-f = open("../resources/config.json")
-target_configs = json.load(f)
+f = open("../resources/config.yaml")
+target_configs = yaml.safe_load(f)
 f.close()
 
 
@@ -119,6 +118,8 @@ if __name__ == "__main__":
                 opc_value = 2
             elif "state" in check and opc_value == "0.0":
                 opc_value = 0
+            elif "consumption" in check:
+                opc_value = 460
             else:
                 opc_value = str(opc_value)
 
