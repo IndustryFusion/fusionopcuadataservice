@@ -24,7 +24,7 @@ import yaml
 
 for key, value in os.environ.items():
     if key.startswith('OPCUA_DISCOVERY_URL'):
-        opcua_discovery_url = os.environ.get(key)
+        opcua_discovery_url = "opc.tcp://192.168.49.198:62548"
 
 oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
@@ -103,7 +103,8 @@ def sendOispData(n, v):
 
 if __name__ == "__main__":
     time.sleep(20)
-
+    temp_current = 0
+    temp_voltage = 0
     # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
     # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
     while 1:
@@ -114,12 +115,16 @@ if __name__ == "__main__":
             oisp_n = "http://www.industry-fusion.org/fields#" + item['parameter']
             opc_value = fetchOpcData(n=opc_n, i=opc_i)
             check = str(oisp_n).split("-")
-            if "state" in check and opc_value != "0.0":
+            if "state" in check and opc_value != "0.0" or opc_value == "Running":
                 opc_value = 2
-            elif "state" in check and opc_value == "0.0":
+            elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
                 opc_value = 0
+            elif "current-l1" in check:
+                temp_current = int(opc_value)
+            elif "voltage-l1" in check:
+                temp_voltage = int(opc_value)
             elif "consumption" in check:
-                opc_value = 460
+                opc_value = temp_current * temp_voltage
             else:
                 opc_value = str(opc_value)
 
