@@ -124,7 +124,7 @@ if __name__ == "__main__":
             elif "voltage-l1" in check:
                 temp_voltage = int(opc_value)
             elif "consumption" in check:
-                opc_value = temp_current * temp_voltage
+                opc_value = (temp_current + 1) * (temp_voltage + 1)
             else:
                 opc_value = str(opc_value)
 
