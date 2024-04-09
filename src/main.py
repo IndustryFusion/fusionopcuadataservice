@@ -105,7 +105,7 @@ async def main():
                 opc_n = item['node_id']
                 opc_i = item['identifier']
                 oisp_n = "http://www.industry-fusion.org/fields#" + item['parameter']
-                opc_value = fetchOpcData(n=opc_n, i=opc_i, client=client)
+                opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
                 check = str(oisp_n).split("-")
                 if "state" in check and opc_value != "0.0" or opc_value == "Running":
                     opc_value = 2
