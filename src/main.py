@@ -14,60 +14,45 @@
 # limitations under the License.
 #
 
-import json
-from opcua import Client
+
+import asyncio
+import logging
+from asyncua import Client
 import os
 import socket
 import time
 import yaml
+import re
 # Fetching all environment variables
 
 for key, value in os.environ.items():
     if key.startswith('OPCUA_DISCOVERY_URL'):
-        opcua_discovery_url = "opc.tcp://192.168.49.198:62548"
+        # Regular expression pattern to match the desired part of the string
+        pattern = r"(opc\.tcp://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)"
+
+        # Search for the pattern in the string
+        match = re.search(pattern, value)
+
+        if match:
+            opcua_discovery_url = match.group(1)  # Extract the matched part
+            # Printing the Akri discovered URL 
+            print('env name: ' + opcua_discovery_url)
+        else:
+            print("Pattern not found")
 
 oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('USERNAME')
-opc_password = os.environ.get('PASSWORD')
+opc_password = "#gcu01"
 
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
 
-# Printing the Akri discovered URL 
-print('env name: ' + opcua_discovery_url)
-
 # TCP socket config for OISP
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# OPC-UA client instance creation
-try:
-    client = Client(opcua_discovery_url)
-    print("Connected to OPC UA server")
-except:
-    print("Could not connect to OPC UA server")
-    exit()
-
-async def make_connection():
-    global client
-    client.set_user(opc_username)
-    client.set_password(opc_password)
-    await client.connect()
-
-# OPCUA connection with or without password
-if opc_username != "" and opc_password != "":
-    make_connection()
-else:
-    client.connect()
-    
 # PDT client connection
 s.connect((str(oisp_url), int(oisp_port)))
-root = client.get_root_node()
-
-# Prinitng the OPC applicationName and Uri to confirm the AKri config
-for i in client.find_servers():
-    print(str(i.ApplicationName.Text))
-    print(str(i.ApplicationUri))
 
 # Opening JSON config file for OPCUA - machine specific config from mounted path in runtime
 f = open("../resources/config.yaml")
@@ -76,17 +61,17 @@ f.close()
 
 
 # Method to fetch the OPC-UA Node value with given namespace and identifier
-def fetchOpcData(n, i):
+async def fetchOpcData(n, i, client):
     try:
         var = client.get_node(n + ";" + i)
         print("Fetched data from OPC UA: " + n + " " + i)
-        print(var.get_value())
+        print(await var.read_value())
     except Exception as e:
         print(e)
         print("Could not fetch data from OPC UA")
         return "0.0"
     
-    return var.get_value()
+    return await var.read_value()
 
 
 # Method to send the value of the OPC-UA node to PDT with its property
@@ -101,31 +86,38 @@ def sendOispData(n, v):
         print("Could not send data to OISP")
 
 
+async def main():
+    client = Client(opcua_discovery_url, timeout=2)
+    client.set_user(opc_username)
+    client.set_password(opc_password)
+
+    async with client:
+        root = client.nodes.root
+        print("Root node is: ", root)
+
+        temp_current = 0
+        temp_voltage = 0
+        # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
+        # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
+        while 1:
+            for item in target_configs['fusionopcuadataservice']['specification']:
+                time.sleep(0.5)
+                opc_n = item['node_id']
+                opc_i = item['identifier']
+                oisp_n = "http://www.industry-fusion.org/fields#" + item['parameter']
+                opc_value = fetchOpcData(n=opc_n, i=opc_i, client=client)
+                check = str(oisp_n).split("-")
+                if "state" in check and opc_value != "0.0" or opc_value == "Running":
+                    opc_value = 2
+                elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
+                    opc_value = 0
+                else:
+                    opc_value = str(opc_value)
+
+                sendOispData(n=oisp_n, v=opc_value)
+
 if __name__ == "__main__":
     time.sleep(20)
-    temp_current = 0
-    temp_voltage = 0
-    # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
-    # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
-    while 1:
-        for item in target_configs['fusionopcuadataservice']['specification']:
-            time.sleep(0.5)
-            opc_n = item['node_id']
-            opc_i = item['identifier']
-            oisp_n = "http://www.industry-fusion.org/fields#" + item['parameter']
-            opc_value = fetchOpcData(n=opc_n, i=opc_i)
-            check = str(oisp_n).split("-")
-            if "state" in check and opc_value != "0.0" or opc_value == "Running":
-                opc_value = 2
-            elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
-                opc_value = 0
-            elif "current-l1" in check:
-                temp_current = int(opc_value)
-            elif "voltage-l1" in check:
-                temp_voltage = int(opc_value)
-            elif "consumption" in check:
-                opc_value = (temp_current + 1) * (temp_voltage + 1)
-            else:
-                opc_value = str(opc_value)
 
-            sendOispData(n=oisp_n, v=opc_value)
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())
