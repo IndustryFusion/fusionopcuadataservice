@@ -43,7 +43,7 @@ for key, value in os.environ.items():
 oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('USERNAME')
-opc_password = "#gcu01"
+opc_password = os.environ.get('PASSWORD')
 
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
