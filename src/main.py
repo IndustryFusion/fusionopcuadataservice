@@ -88,8 +88,9 @@ def sendOispData(n, v):
 
 async def main():
     client = Client(opcua_discovery_url, timeout=2)
-    client.set_user(opc_username)
-    client.set_password(opc_password)
+    if opc_username != '' and opc_password != '':
+        client.set_user(opc_username)
+        client.set_password(opc_password)
 
     async with client:
         root = client.nodes.root
