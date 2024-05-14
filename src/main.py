@@ -17,7 +17,7 @@
 
 import asyncio
 import logging
-from asyncua import Client
+from asyncua import Client, ua
 import os
 import socket
 import time
@@ -60,6 +60,26 @@ target_configs = yaml.safe_load(f)
 f.close()
 
 
+async def changeGasConnect(opc_value_gas):
+    client2 = Client("opc.tcp://192.168.49.192:54845", timeout=5)
+    client2.set_user("integration")
+    client2.set_password("#gcu01")
+
+    async with client2:
+        try:
+            node = client2.get_node("ns=1;s=Read.SourceSwitchPressure[0]")
+            # For example, to write an integer value
+            var = ua.Variant(float(opc_value_gas), ua.VariantType.Float)
+            
+            # Write the value to the node
+            await node.write_value(var)
+            print(f"Value {opc_value_gas} written")
+    
+        finally:
+            # Disconnect the client
+            await client2.disconnect()
+
+
 # Method to fetch the OPC-UA Node value with given namespace and identifier
 async def fetchOpcData(n, i, client):
     try:
@@ -98,6 +118,7 @@ async def main():
 
         temp_current = 0
         temp_voltage = 0
+        temp_gas = ''
         # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
         # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
         while 1:
@@ -112,6 +133,11 @@ async def main():
                     opc_value = 2
                 elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
                     opc_value = 0
+                elif "medium" in check:
+                    temp_gas = str(opc_value)
+                elif "target" in check:
+                    if 'O' in temp_gas:
+                        changeGasConnect(opc_value)  
                 else:
                     opc_value = str(opc_value)
 
