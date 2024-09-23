@@ -106,7 +106,7 @@ async def main():
                 opc_i = item['identifier']
                 oisp_n = item['parameter']
                 opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
-                check = str(oisp_n).split("-")
+                check = str(oisp_n).split("_")
                 if "state" in check and opc_value != "0.0" or opc_value == "Running":
                     opc_value = 2
                 elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
