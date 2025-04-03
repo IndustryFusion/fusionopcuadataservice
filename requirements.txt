@@ -12,3 +12,4 @@ termcolor==2.3.0
 urllib3==2.0.2
 pyyaml
 asyncua
+cryptography
