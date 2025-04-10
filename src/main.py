@@ -66,7 +66,7 @@ async def fetchOpcData(n, i, client):
         var = client.get_node(n + ";" + i)
         print("Fetched data from OPC UA: " + n + " " + i)
         print(await var.read_value())
-    except Exception as e:
+    except ua.UaStatusCodeError as e:
         print(e)
         print("Could not fetch data from OPC UA")
         return "0.0"
@@ -83,7 +83,7 @@ def sendOispData(n, v):
         print(msgFromClient)
     except Exception as e:
         print(e)
-        print("Could not send data to OISP")
+        print("Could not send data to OISP, check whether it is running or not")
 
 
 async def run_opc_loop():
