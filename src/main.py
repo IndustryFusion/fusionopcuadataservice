@@ -17,7 +17,7 @@
 
 import asyncio
 import logging
-from asyncua import Client
+from asyncua import Client, ua
 import os
 import socket
 import time
@@ -86,35 +86,51 @@ def sendOispData(n, v):
         print("Could not send data to OISP")
 
 
+async def run_opc_loop():
+    while True:
+        try:
+            client = Client(opcua_discovery_url, timeout=5)
+            client.set_user(opc_username)
+            client.set_password(opc_password)
+
+            async with client:
+                root = client.nodes.root
+                print("Root node is: ", root)
+
+                # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
+                # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
+                while True:
+                    for item in target_configs['fusionopcuadataservice']['specification']:
+                        time.sleep(1)
+                        opc_n = item['node_id']
+                        opc_i = item['identifier']
+                        oisp_n = item['parameter']
+                        try:
+                            opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
+                        except Exception as e:
+                            logging.error(f"Error fetching data from OPC UA: {e}")
+                            raise  # This will trigger outer reconnect
+                        check = str(oisp_n).split("_")
+                        if "state" in check and opc_value != "0.0" or opc_value == "Running":
+                            opc_value = 2
+                        elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
+                            opc_value = 0
+                        else:
+                            opc_value = str(opc_value)
+
+                        sendOispData(n=oisp_n, v=opc_value)
+
+        except (ua.UaError, ConnectionError, asyncio.TimeoutError) as e:
+            logging.warning(f"Connection lost or failed: {e}. Reconnecting in 5 seconds...")
+            await asyncio.sleep(5)
+
+        except Exception as e:
+            logging.error(f"Unexpected error: {e}")
+            await asyncio.sleep(10)
+
+
 async def main():
-    client = Client(opcua_discovery_url, timeout=2)
-    client.set_user(opc_username)
-    client.set_password(opc_password)
-
-    async with client:
-        root = client.nodes.root
-        print("Root node is: ", root)
-
-        temp_current = 0
-        temp_voltage = 0
-        # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
-        # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
-        while 1:
-            for item in target_configs['fusionopcuadataservice']['specification']:
-                time.sleep(0.5)
-                opc_n = item['node_id']
-                opc_i = item['identifier']
-                oisp_n = item['parameter']
-                opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
-                check = str(oisp_n).split("_")
-                if "state" in check and opc_value != "0.0" or opc_value == "Running":
-                    opc_value = 2
-                elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
-                    opc_value = 0
-                else:
-                    opc_value = str(opc_value)
-
-                sendOispData(n=oisp_n, v=opc_value)
+    await run_opc_loop()
 
 if __name__ == "__main__":
     time.sleep(20)
