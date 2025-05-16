@@ -72,3 +72,14 @@ To build this project using Docker and run it, follow the below instructions.
 From the root project folder.
 
 `docker build -t <image name> .`
+
+
+## Hints for connecting any protocol with this template and use in IFF Suite's Factory Manager
+
+1. Add your protocol client library to python requirements and import it in code.
+2. Define your connection URL in code (see inline comments).
+3. The PDT datapoint name (parameter) and respective data path in machine data service (identifier. Eg, topic in MQTT, OPCUA node id, etc) will come from config file in runtime.
+4. In 'run_loop' method, create your protocol client object and send it to fetchOneDataPoint with identifier. Get back the value.
+5. In 'run_loop' method, send parameter and its fetched value from last step to 'sendPdtData' mehtod.
+6. Build the docker image and push it to public repo. Use the image name in the IFF Suite's factory manager. The Gateway box will pick the image and use it automatically.
+7. Go through inline comments and fill fetchOneDataPoint method with connection to your data server.

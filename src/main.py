@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 IB Systems GmbH
+# Copyright (c) 2025 IB Systems GmbH
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -89,13 +89,13 @@ async def run_loop():
                         identifier = item['identifier']
                         parameter = item['parameter']
                         try:
-                            opc_value = await fetchOneDataPoint(identifier=identifier, client=client)
+                            value = await fetchOneDataPoint(identifier=identifier, client=client)
                         except Exception as e:
                             logging.error(f"Error fetching data from OPC UA: {e}")
                             raise  # This will trigger outer reconnect
-                        opc_value = str(opc_value)
+                        value = str(value)
 
-                        sendPdtData(parameter=parameter, opc_value=opc_value)
+                        sendPdtData(parameter=parameter, value=value)
 
         except (ConnectionError) as e:
             logging.warning(f"Connection lost or failed: {e}. Reconnecting in 5 seconds...")
