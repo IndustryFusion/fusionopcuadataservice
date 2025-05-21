@@ -23,14 +23,14 @@ import time
 import yaml
 
 # ------ Fill the relevant protocol connection address and port URL here. ------
-discovery_url = os.environ.get('DISCOVERY_URL')
+discovery_url = os.environ.get('PROTOCOL_URL')
+username = os.environ.get('USERNAME')
+password = os.environ.get('PASSWORD')
 
 # These are the environment variables set in the deployment coming from IFF suite
 # (use it to send data to PDT iot agent and also use username and password for protect connections)
 oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
-opc_username = os.environ.get('USERNAME')
-opc_password = os.environ.get('PASSWORD')
 
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
@@ -43,6 +43,7 @@ s.connect((str(oisp_url), int(oisp_port)))
 
 # Opening JSON config file for OPCUA - machine specific config from mounted path in runtime
 # This is device config file which comes from IFF suite, mounted using configmap in runtime
+# and can be used to map any custom configs to code.
 f = open("../resources/config.yaml")
 target_configs = yaml.safe_load(f)
 f.close()
