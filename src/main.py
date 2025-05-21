@@ -25,21 +25,7 @@ import yaml
 import re
 # Fetching all environment variables
 
-for key, value in os.environ.items():
-    if key.startswith('OPCUA_DISCOVERY_URL'):
-        # Regular expression pattern to match the desired part of the string
-        pattern = r"(opc\.tcp://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)"
-
-        # Search for the pattern in the string
-        match = re.search(pattern, value)
-
-        if match:
-            opcua_discovery_url = match.group(1)  # Extract the matched part
-            # Printing the Akri discovered URL 
-            print('env name: ' + opcua_discovery_url)
-        else:
-            print("Pattern not found")
-
+discovery_url = os.environ.get('PROTOCOL_URL')
 oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('USERNAME')
@@ -89,7 +75,7 @@ def sendOispData(n, v):
 async def run_opc_loop():
     while True:
         try:
-            client = Client(opcua_discovery_url, timeout=5)
+            client = Client(discovery_url, timeout=5)
             client.set_user(opc_username)
             client.set_password(opc_password)
 
