@@ -30,7 +30,6 @@ oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('USERNAME')
 opc_password = os.environ.get('PASSWORD')
-
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
 
@@ -55,7 +54,7 @@ async def fetchOpcData(n, i, client):
     except ua.UaStatusCodeError as e:
         print(e)
         print("Could not fetch data from OPC UA")
-        return "0.0"
+        return None
     
     return await var.read_value()
 
@@ -95,12 +94,14 @@ async def run_opc_loop():
                             opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
                         except Exception as e:
                             logging.error(f"Error fetching data from OPC UA: {e}")
-                            raise  # This will trigger outer reconnect
                         check = str(oisp_n).split("_")
                         if "state" in check and opc_value != "0.0" or opc_value == "Running":
                             opc_value = 2
-                        elif "state" in check and opc_value == "0.0" or opc_value == "Idle":
-                            opc_value = 0
+                        elif "state" in check and opc_value == "0.0" or opc_value == None or opc_value == 0 or opc_value == "Idle":
+                            opc_value = 1
+                        elif opc_value == None:
+                            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
+                            continue
                         else:
                             opc_value = str(opc_value)
 
@@ -108,12 +109,14 @@ async def run_opc_loop():
 
         except (ua.UaError, ConnectionError, asyncio.TimeoutError) as e:
             logging.warning(f"Connection lost or failed: {e}. Reconnecting in 5 seconds...")
+            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
             await asyncio.sleep(5)
-
+            
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
+            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
             await asyncio.sleep(10)
-
+            
 
 async def main():
     await run_opc_loop()
