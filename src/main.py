@@ -90,16 +90,19 @@ async def run_opc_loop():
                         opc_n = item['node_id']
                         opc_i = item['identifier']
                         oisp_n = item['parameter']
+                        opc_value = None
                         try:
                             opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
                         except Exception as e:
                             logging.error(f"Error fetching data from OPC UA: {e}")
+                            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
+                            continue
                         check = str(oisp_n).split("_")
                         if "state" in check and opc_value != "0.0" or opc_value == "Running":
                             opc_value = 2
-                        elif "state" in check and opc_value == "0.0" or opc_value == None or opc_value == 0 or opc_value == "Idle":
+                        elif "state" in check and opc_value == "0.0" or opc_value is None or opc_value == 0 or opc_value == "Idle":
                             opc_value = 1
-                        elif opc_value == None:
+                        elif opc_value is None:
                             sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
                             continue
                         else:
