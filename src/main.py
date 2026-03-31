@@ -30,6 +30,7 @@ oisp_url = os.environ.get('IFF_AGENT_URL')
 oisp_port = os.environ.get('IFF_AGENT_PORT')
 opc_username = os.environ.get('USERNAME')
 opc_password = os.environ.get('PASSWORD')
+sampling_rate = float(os.environ.get('SAMPLING_RATE', '1.0'))
 # Explicit sleep to wait for OISP agent to work
 time.sleep(30)
 
@@ -86,7 +87,7 @@ async def run_opc_loop():
                 # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
                 while True:
                     for item in target_configs['fusionopcuadataservice']['specification']:
-                        time.sleep(1)
+                        time.sleep(sampling_rate)
                         opc_n = item['node_id']
                         opc_i = item['identifier']
                         oisp_n = item['parameter']
