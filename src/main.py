@@ -50,14 +50,15 @@ f.close()
 async def fetchOpcData(n, i, client):
     try:
         var = client.get_node(n + ";" + i)
+        value = await var.read_value()
         print("Fetched data from OPC UA: " + n + " " + i)
-        print(await var.read_value())
+        print(value)
     except ua.UaStatusCodeError as e:
         print(e)
         print("Could not fetch data from OPC UA")
         return None
-    
-    return await var.read_value()
+
+    return value
 
 
 # Method to send the value of the OPC-UA node to PDT with its property
@@ -70,6 +71,26 @@ def sendOispData(n, v):
     except Exception as e:
         print(e)
         print("Could not send data to OISP, check whether it is running or not")
+
+
+async def process_item(item, client):
+    opc_n = item['node_id']
+    opc_i = item['identifier']
+    oisp_n = item['parameter']
+    try:
+        opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
+    except Exception as e:
+        logging.error(f"Error fetching data from OPC UA: {e}")
+        sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
+        return
+    is_state_param = "state" in str(oisp_n).split("_")
+    if is_state_param and (opc_value != "0.0" or opc_value == "Running"):
+        opc_value = 2
+    elif is_state_param and (opc_value == "0.0" or opc_value is None or opc_value == 0 or opc_value == "Idle"):
+        opc_value = 1
+    else:
+        opc_value = str(opc_value)
+    sendOispData(n=oisp_n, v=opc_value)
 
 
 async def run_opc_loop():
@@ -86,26 +107,11 @@ async def run_opc_loop():
                 # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
                 # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
                 while True:
-                    for item in target_configs['fusionopcuadataservice']['specification']:
-                        time.sleep(sampling_rate)
-                        opc_n = item['node_id']
-                        opc_i = item['identifier']
-                        oisp_n = item['parameter']
-                        try:
-                            opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
-                        except Exception as e:
-                            logging.error(f"Error fetching data from OPC UA: {e}")
-                            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
-                            continue
-                        check = str(oisp_n).split("_")
-                        if "state" in check and (opc_value != "0.0" or opc_value == "Running"):
-                            opc_value = 2
-                        elif "state" in check and (opc_value == "0.0" or opc_value is None or opc_value == 0 or opc_value == "Idle"):
-                            opc_value = 1
-                        else:
-                            opc_value = str(opc_value)
-
-                        sendOispData(n=oisp_n, v=opc_value)
+                    await asyncio.gather(
+                        *[process_item(item, client)
+                          for item in target_configs['fusionopcuadataservice']['specification']]
+                    )
+                    # await asyncio.sleep(sampling_rate)
 
         except (ua.UaError, ConnectionError, asyncio.TimeoutError) as e:
             logging.warning(f"Connection lost or failed: {e}. Reconnecting in 5 seconds...")
