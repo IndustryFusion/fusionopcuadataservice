@@ -14,86 +14,121 @@
 # limitations under the License.
 #
 
+# Reads the configured OPC UA nodes and sends their values to the IFF agent.
+# Values are sent as read; what they mean for the digital twin is decided only
+# by the transform rules from Factory Manager (see transform.py).
 
 import asyncio
+import json
 import logging
-from asyncua import Client, ua
 import os
 import socket
 import time
+
 import yaml
-import re
-# Fetching all environment variables
+from asyncua import Client, ua
+
+from transform import Transformer
+
+logger = logging.getLogger('fusionopcuadataservice')
 
 discovery_url = os.environ.get('PROTOCOL_URL')
-oisp_url = os.environ.get('IFF_AGENT_URL')
-oisp_port = os.environ.get('IFF_AGENT_PORT')
+agent_host = os.environ.get('IFF_AGENT_URL', '127.0.0.1')
+agent_udp_port = int(os.environ.get('IFF_AGENT_UDP_PORT', '41234'))
 opc_username = os.environ.get('USERNAME')
 opc_password = os.environ.get('PASSWORD')
 sampling_rate = float(os.environ.get('SAMPLING_RATE', '1.0'))
-# Explicit sleep to wait for OISP agent to work
-time.sleep(30)
+config_path = os.environ.get('CONFIG_PATH', '../resources/config.yaml')
+# Time for the IFF agent in the same pod to come up before the first send
+startup_delay = float(os.environ.get('STARTUP_DELAY', '50'))
 
-# TCP socket config for OISP
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# Messages per UDP datagram; keeps each datagram far below the UDP size limit
+BATCH_SIZE = 50
 
-# PDT client connection
-s.connect((str(oisp_url), int(oisp_port)))
+# Bad statuses that mean the session or connection is gone, not just one node
+CONNECTION_STATUS_NAMES = (
+    'BadCommunicationError', 'BadConnectionClosed', 'BadDisconnect', 'BadNoCommunication',
+    'BadNotConnected', 'BadSecureChannelClosed', 'BadSecureChannelIdInvalid', 'BadServerHalted',
+    'BadServerNotConnected', 'BadSessionClosed', 'BadSessionIdInvalid', 'BadShutdown', 'BadTimeout',
+)
+CONNECTION_STATUS_CODES = {getattr(ua.StatusCodes, name) for name in CONNECTION_STATUS_NAMES
+                           if hasattr(ua.StatusCodes, name)}
 
-# Opening JSON config file for OPCUA - machine specific config from mounted path in runtime
-f = open("../resources/config.yaml")
-target_configs = yaml.safe_load(f)
-f.close()
+
+class AgentSender:
+    """Sends to the IFF agent over UDP: one datagram is one JSON array, so
+    messages can never run together the way they can on the TCP listener."""
+
+    def __init__(self, host, port):
+        self.address = (host, port)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def send(self, values):
+        messages = [{'n': parameter, 'v': value, 't': 'Property'} for parameter, value in values]
+        for start in range(0, len(messages), BATCH_SIZE):
+            batch = messages[start:start + BATCH_SIZE]
+            try:
+                self.sock.sendto(json.dumps(batch).encode('utf-8'), self.address)
+            except OSError as e:
+                logger.warning('Could not send to the IFF agent at %s:%s: %s', *self.address, e)
+                return
+            logger.debug('Sent %s', batch)
 
 
-# Method to fetch the OPC-UA Node value with given namespace and identifier
-async def fetchOpcData(n, i, client):
+def load_config(path):
+    with open(path) as f:
+        service_config = yaml.safe_load(f)['fusionopcuadataservice']
+    return service_config['specification'], Transformer(service_config.get('transforms'))
+
+
+# Nodes currently failing, so each failure is logged once rather than every cycle
+failing_nodes = set()
+
+
+def node_failed(node_id, reason):
+    if node_id not in failing_nodes:
+        failing_nodes.add(node_id)
+        logger.warning('Could not read %s: %s', node_id, reason)
+    return None
+
+
+async def read_item(client, item):
+    """The node's value, or None when this node cannot be read right now.
+    Connection-level failures are raised so the client reconnects."""
+    node_id = item['node_id'] + ';' + item['identifier']
     try:
-        var = client.get_node(n + ";" + i)
-        value = await var.read_value()
-        print("Fetched data from OPC UA: " + n + " " + i)
-        print(value)
+        node = client.get_node(node_id)
+    except Exception as e:  # a malformed node id only affects this item
+        return node_failed(node_id, e)
+    try:
+        value = await node.read_value()
     except ua.UaStatusCodeError as e:
-        print(e)
-        print("Could not fetch data from OPC UA")
-        return None
-
+        if getattr(e, 'code', None) in CONNECTION_STATUS_CODES:
+            raise
+        return node_failed(node_id, e)
+    if node_id in failing_nodes:
+        failing_nodes.discard(node_id)
+        logger.info('%s can be read again', node_id)
     return value
 
 
-# Method to send the value of the OPC-UA node to PDT with its property
-def sendOispData(n, v):
-    try:
-        msgFromClient = '{"n": "' + n + '", "v": "' + str(v) + '", "t": "Property"}'
-        s.send(str.encode(msgFromClient))
-        print("Sent data to OISP: " + n + " " + str(v))
-        print(msgFromClient)
-    except Exception as e:
-        print(e)
-        print("Could not send data to OISP, check whether it is running or not")
+async def poll_once(client, specification, transformer, sender):
+    results = await asyncio.gather(*[read_item(client, item) for item in specification],
+                                   return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+
+    values = []
+    for item, raw in zip(specification, results):
+        value = transformer.convert(item['parameter'], raw)
+        if value is not None:
+            values.append((item['parameter'], value))
+    sender.send(values)
 
 
-async def process_item(item, client):
-    opc_n = item['node_id']
-    opc_i = item['identifier']
-    oisp_n = item['parameter']
-    try:
-        opc_value = await fetchOpcData(n=opc_n, i=opc_i, client=client)
-    except Exception as e:
-        logging.error(f"Error fetching data from OPC UA: {e}")
-        sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
-        return
-    is_state_param = "state" in str(oisp_n).split("_")
-    if is_state_param and (opc_value != "0.0" or opc_value == "Running"):
-        opc_value = 2
-    elif is_state_param and (opc_value == "0.0" or opc_value is None or opc_value == 0 or opc_value == "Idle"):
-        opc_value = 1
-    else:
-        opc_value = str(opc_value)
-    sendOispData(n=oisp_n, v=opc_value)
-
-
-async def run_opc_loop():
+async def run_opc_loop(specification, transformer, sender):
+    parameters = [item['parameter'] for item in specification]
     while True:
         try:
             client = Client(discovery_url, timeout=5)
@@ -101,34 +136,31 @@ async def run_opc_loop():
             client.set_password(opc_password)
 
             async with client:
-                root = client.nodes.root
-                print("Root node is: ", root)
-
-                # Continously fetch the properties, OPC-UA namespace and identifier from OPC-UA config
-                # Fetch the respective value from the OPC_UA server and sending it to PDT with the property
+                logger.info('Connected to %s', discovery_url)
                 while True:
-                    await asyncio.gather(
-                        *[process_item(item, client)
-                          for item in target_configs['fusionopcuadataservice']['specification']]
-                    )
-                    # await asyncio.sleep(sampling_rate)
+                    await client.check_connection()
+                    await poll_once(client, specification, transformer, sender)
+                    await asyncio.sleep(sampling_rate)
 
-        except (ua.UaError, ConnectionError, asyncio.TimeoutError) as e:
-            logging.warning(f"Connection lost or failed: {e}. Reconnecting in 5 seconds...")
-            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
+        except (ua.UaError, ConnectionError, OSError, asyncio.TimeoutError) as e:
+            logger.warning('Connection lost or failed: %s. Reconnecting in 5 seconds...', e)
+            sender.send(transformer.error_values(parameters).items())
             await asyncio.sleep(5)
-            
-        except Exception as e:
-            logging.error(f"Unexpected error: {e}")
-            sendOispData(n="https://industry-fusion.org/base/v0.1/machine_state", v="0")
+
+        except Exception:
+            logger.exception('Unexpected error. Reconnecting in 10 seconds...')
+            sender.send(transformer.error_values(parameters).items())
             await asyncio.sleep(10)
-            
 
-async def main():
-    await run_opc_loop()
 
-if __name__ == "__main__":
-    time.sleep(20)
+def main():
+    logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper(),
+                        format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    specification, transformer = load_config(config_path)
+    logger.info('Reading %d node(s) from %s every %ss', len(specification), discovery_url, sampling_rate)
+    time.sleep(startup_delay)
+    asyncio.run(run_opc_loop(specification, transformer, AgentSender(agent_host, agent_udp_port)))
 
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+
+if __name__ == '__main__':
+    main()
