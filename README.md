@@ -65,72 +65,121 @@ The above docker container also expects a config file with the name config.json 
 Update the "host" variable with the correct PDT URL.
 
 
-## Local Setup
+## Configuration
 
-From the root directory of this project run the below commands to install and activate venv. For the econd time, just use the activate command.
+All settings come from environment variables. In a gateway deployment the
+onboarding controller (iff-akri-controller) sets them from the Factory Manager
+onboarding form.
 
-**To install venv**
+| Variable | Meaning | Default |
+|---|---|---|
+| `PROTOCOL_URL` | OPC-UA server endpoint, e.g. `opc.tcp://192.168.49.171:4840` | required |
+| `USERNAME` / `PASSWORD` | OPC-UA user and password, if any | empty |
+| `IFF_AGENT_URL` | Host of the IFF IoT agent | `127.0.0.1` |
+| `IFF_AGENT_UDP_PORT` | UDP port of the IFF IoT agent (`listeners.udp_port`) | `41234` |
+| `SAMPLING_RATE` | Seconds between two reads of all nodes | `1.0` |
+| `CONFIG_PATH` | Path of the node configuration | `../resources/config.yaml` |
+| `STARTUP_DELAY` | Seconds to wait for the agent before the first read | `50` |
+| `LOG_LEVEL` | `DEBUG` also logs every value sent | `INFO` |
 
-`python3 -m venv .venv`
+Values are sent to the agent over UDP, one JSON array per datagram.
+`IFF_AGENT_PORT` (TCP) is no longer used.
 
-**To activate**
+The node configuration (`config.yaml`) lists the nodes to read and, optionally,
+how to transform their values:
 
-`source .venv/bin/activate`
-
-**Install required modules**
-
-`pip3 install -r requirements.txt`
-
-**Run the project (export environment varibales first as shown below)**
-
-`export OPCUA_DISCOVERY_URL=<OPC-UA Server URL>`
-
-Example: "opc.tcp://192.168.49.171:4840"
-
-
-`export IFF_AGENT_URL=<URL of the IFF IoT Agent>`
-
-Example: "127.0.0.1", if the agent is started in local as mentioned in the prerequisites. Or a valid DNS or IP from the cloud.
-
-
-`export IFF_AGENT_PORT="7070"`
-
-`export OPC_USERNAME=<Usenrame of OPC-UA server, if any>`
-
-`export OPC_PASSWORD=<Password of OPC-UA server, if any>`
-
-Also, the fusion OPC-UA service expects a config file with the name config.json in the 'resources' folder in the root project folder containing OPC-UA node ids', namespaces, PDT device property names as shown below in the example.
-
-```json
-{
-    "fusionopcuadataservice": {
-        "specification": [
-            {
-            "node_id": "ns=2",
-            "identifier": "s=1:MergedRootGroupNode/MsncCoreRootNode/ActualStateOfCuttingMachine/ActualState?msnc.aSpd",
-            "parameter": "cutter-head-speed"
-            },
-            {
-            "node_id": "some namespace",
-            "identifier": "Some OPC-UA node identifier",
-            "parameter": "some property"
-            }
-        ]
-    }
-}
+```yaml
+fusionopcuadataservice:
+  specification:
+    - node_id: "ns=4"
+      identifier: "i=39"
+      parameter: "https://industry-fusion.org/base/v0.1/machine_state"
+    - node_id: "ns=2"
+      identifier: "s=Power"
+      parameter: "https://industry-fusion.org/base/v0.1/power_consumption"
+  transforms:
+    version: 1
+    rules:
+      - parameter: "https://industry-fusion.org/base/v0.1/machine_state"
+        map:
+          cases:                         # first match wins
+            - { eq: "1", out: "2" }      # this machine's 1 means Online Running
+            - { min: 3, max: 9, out: "1" }
+            - { bit: 4, out: "1" }       # bit 4 of a status word
+          fallback: { value: "1" }       # or drop (default) or raw
+        on_error: "0"                    # sent when the node or server cannot be read
+      - parameter: "https://industry-fusion.org/base/v0.1/power_consumption"
+        linear: { factor: 1000, offset: 0, decimals: 3, from: kW, to: W }
+      - parameter: "https://industry-fusion.org/base/v0.1/cutting_velocity"
+        map:                             # map first ...
+          cases:
+            - { eq: "0", out: "10" }
+          fallback: raw
+        linear: { factor: 60, offset: 0, from: m/s, to: m/min }   # ... then convert
 ```
 
-**Run the service**
+## Value transforms
 
-`python src/main.py`
+The service sends what it reads. It has no built-in knowledge of what any
+property means. Every interpretation comes from `transforms`, which Factory
+Manager writes from the "Value Transforms" step of its onboarding form:
 
+- **No rule:** the value is sent as read. Whole numbers are sent without `.0`,
+  booleans as `true`/`false`, and everything else as text.
+- **`map`:** cases are tried in order and the first match wins.
+  - `eq` compares numbers numerically (`1`, `"1"`, `1.0`, `"1.0"` and `true` are
+    all `1`), and text without regard to case or surrounding spaces.
+  - `min`/`max` is an inclusive range; either end may be left out.
+  - `bit` matches when that bit of a whole, non-negative value is set.
+  - If nothing matches, `fallback` decides: `drop` (send nothing), `raw` (send
+    the value as read), or `{value: ...}`.
+- **`linear`:** sends `value × factor + offset`, rounded half away from zero to
+  `decimals` (default 6). `from` and `to` are only labels for Factory Manager.
+- **`map` and `linear` together:** the map runs first. What it puts out (a
+  case's `out` or the fallback value) is converted when it is a number and sent
+  as it is when it is text. A value it lets through (`fallback: raw`) is
+  converted when it is a number and dropped when it is not. Data service
+  images older than this ignore a rule with both and drop that parameter.
+- **`on_error`:** sent when the node cannot be read or the server cannot be
+  reached. Without it, nothing is sent for that parameter.
+- **A rule that is not valid** drops its parameter's values and logs an error.
+  The other parameters are not affected.
+
+The first time a parameter sends a new value, it is logged at INFO with its
+result. This shows which codes a machine actually sends.
+
+## Local Setup
+
+From the root directory of this project:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip3 install -r requirements.txt
+export PROTOCOL_URL=opc.tcp://192.168.49.171:4840
+export IFF_AGENT_URL=127.0.0.1
+export CONFIG_PATH=$PWD/resources/config.yaml
+export STARTUP_DELAY=0
+python src/main.py
+```
+
+## Tests
+
+The transform rules are tested against `tests/transform_cases.json`. Factory
+Manager's preview runs the same file, so change both together. The image runs
+Python 3.8, so run the tests there:
+
+```sh
+docker run --rm -v "$PWD":/work -w /work python:3.8 \
+  sh -c 'pip install -q -r requirements.txt -r requirements-dev.txt && python -m pytest -q tests'
+```
 
 ## Docker build and run
 
-To build this project using Docker and run it, follow the below instructions.
+From the root project folder:
 
-From the root project folder.
-
-`docker build -t <image name> .`
-
-`docker run -d -e OPCUA_DISCOVERY_URL=<OPC-UA Server URL> -e IFF_AGENT_URL=<URL of the IFF IoT Agent> -e IFF_AGENT_PORT=7070 -e OPC_USERNAME=<Usenrame of OPC-UA server, if any> -e OPC_PASSWORD=<Password of OPC-UA server, if any> -v <config file path>:resources/config.json <image name>`
+```sh
+docker build -t <image name> .
+docker run -d --network host -e PROTOCOL_URL=<OPC-UA Server URL> -e IFF_AGENT_URL=127.0.0.1 \
+  -e USERNAME=<user> -e PASSWORD=<password> -v <config file path>:/resources/config.yaml <image name>
+```
